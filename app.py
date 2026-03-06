@@ -214,10 +214,10 @@ def chat():
     if not source_id or source_id not in sources:
         return jsonify({
             "success": False,
-            "error": "Upload a PDF or add URL first"
+            "error": "Upload a document first"
         }), 400
 
-    context_text = sources[source_id]["text"]
+    context_text = sources[source_id]["text"][:8000]
 
     model = genai.GenerativeModel(DEFAULT_MODEL_NAME)
 
@@ -234,15 +234,19 @@ If the answer is not in the context say:
 "I'm not sure based on the provided source."
 """
 
-    response = model.generate_content(prompt)
-
-    answer = getattr(response, "text", "")
+    try:
+        response = model.generate_content(prompt)
+        answer = getattr(response, "text", "No response generated")
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 
     return jsonify({
         "success": True,
         "answer": answer
     })
-
 
 # -----------------------------
 # VERCEL ENTRY
