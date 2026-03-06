@@ -3,52 +3,54 @@ import uuid
 from typing import Dict, Any
 
 import google.generativeai as genai
-from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
 from pypdf import PdfReader
 from werkzeug.utils import secure_filename
-
 import requests
 from bs4 import BeautifulSoup
 
 
-# Load environment variables
-load_dotenv()
+# -----------------------------
+# GEMINI CONFIG
+# -----------------------------
 
-# Read Gemini API key
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-if not GEMINI_API_KEY:
-    print("Warning: GEMINI_API_KEY not set.")
-else:
+if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
-# Default Gemini model
-DEFAULT_MODEL_NAME = os.getenv("MODEL_NAME_DEFAULT", "gemini-1.5-flash")
+DEFAULT_MODEL_NAME = "gemini-1.5-flash"
 
 
-# Flask app setup
+# -----------------------------
+# FLASK SETUP
+# -----------------------------
+
 app = Flask(
     __name__,
-    template_folder=os.path.join(os.path.dirname(__file__), "templates"),
-    static_folder=os.path.join(os.path.dirname(__file__), "static"),
+    template_folder="templates",
+    static_folder="static"
 )
 
-UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "uploads")
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
+# Vercel only allows temp storage
+UPLOAD_FOLDER = "/tmp"
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 
-# In-memory storage
+# -----------------------------
+# MEMORY STORAGE
+# -----------------------------
+
 sources: Dict[str, Dict[str, Any]] = {}
-current_source_id: str | None = None
+current_source_id = None
 
 
 # -----------------------------
 # PDF TEXT EXTRACTION
 # -----------------------------
-def extract_text_from_pdf(path: str) -> str:
+
+def extract_text_from_pdf(path: str):
+
     reader = PdfReader(path)
     texts = []
 
@@ -57,6 +59,7 @@ def extract_text_from_pdf(path: str) -> str:
             page_text = page.extract_text() or ""
         except Exception:
             page_text = ""
+
         texts.append(page_text)
 
     return "\n\n".join(texts)
@@ -65,12 +68,11 @@ def extract_text_from_pdf(path: str) -> str:
 # -----------------------------
 # URL TEXT EXTRACTION
 # -----------------------------
-def extract_text_from_url(url: str) -> str:
-    try:
-        response = requests.get(url, timeout=15)
-        response.raise_for_status()
-    except Exception as exc:
-        raise RuntimeError(f"Failed to fetch URL: {exc}") from exc
+
+def extract_text_from_url(url: str):
+
+    response = requests.get(url, timeout=15)
+    response.raise_for_status()
 
     soup = BeautifulSoup(response.text, "html.parser")
 
@@ -83,22 +85,25 @@ def extract_text_from_url(url: str) -> str:
 
 
 # -----------------------------
-# HOME PAGE
+# HOME
 # -----------------------------
-@app.route("/", methods=["GET"])
+
+@app.route("/")
 def index():
     return render_template("index.html")
 
 
 # -----------------------------
-# PDF UPLOAD
+# UPLOAD PDF
 # -----------------------------
+
 @app.route("/upload", methods=["POST"])
 def upload():
-    global current_source_id, sources
+
+    global current_source_id
 
     if "file" not in request.files:
-        return jsonify({"success": False, "error": "No file part"}), 400
+        return jsonify({"success": False, "error": "No file uploaded"}), 400
 
     file = request.files["file"]
 
@@ -110,13 +115,10 @@ def upload():
     if not filename.lower().endswith(".pdf"):
         return jsonify({"success": False, "error": "Only PDF allowed"}), 400
 
-    save_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
-    file.save(save_path)
+    path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+    file.save(path)
 
-    try:
-        text_content = extract_text_from_pdf(save_path)
-    except Exception as e:
-        return jsonify({"success": False, "error": f"PDF read failed: {e}"}), 500
+    text_content = extract_text_from_pdf(path)
 
     source_id = str(uuid.uuid4())
 
@@ -129,128 +131,121 @@ def upload():
 
     current_source_id = source_id
 
-    return jsonify({"success": True, "filename": filename, "sourceId": source_id})
+    return jsonify({
+        "success": True,
+        "filename": filename,
+        "sourceId": source_id
+    })
 
 
 # -----------------------------
 # ADD URL
 # -----------------------------
+
 @app.route("/add_url", methods=["POST"])
 def add_url():
-    global current_source_id, sources
 
-    data = request.get_json(silent=True) or {}
-    url = (data.get("url") or "").strip()
+    global current_source_id
+
+    data = request.get_json()
+    url = data.get("url")
 
     if not url:
         return jsonify({"success": False, "error": "URL required"}), 400
 
-    try:
-        text_content = extract_text_from_url(url)
-    except Exception as exc:
-        return jsonify({"success": False, "error": str(exc)}), 500
-
-    display_name = url
-
-    if len(display_name) > 60:
-        display_name = display_name[:57] + "..."
+    text_content = extract_text_from_url(url)
 
     source_id = str(uuid.uuid4())
 
     sources[source_id] = {
         "id": source_id,
-        "name": display_name,
+        "name": url,
         "type": "url",
-        "text": text_content,
+        "text": text_content
     }
 
     current_source_id = source_id
 
-    return jsonify({"success": True, "name": display_name, "sourceId": source_id})
+    return jsonify({
+        "success": True,
+        "sourceId": source_id
+    })
 
 
 # -----------------------------
 # LIBRARY
 # -----------------------------
-@app.route("/library", methods=["GET"])
+
+@app.route("/library")
 def library():
 
     items = []
 
     for source in sources.values():
-        items.append(
-            {
-                "id": source["id"],
-                "name": source["name"],
-                "type": source["type"],
-            }
-        )
+        items.append({
+            "id": source["id"],
+            "name": source["name"],
+            "type": source["type"]
+        })
 
-    return jsonify({"success": True, "items": items})
+    return jsonify({
+        "success": True,
+        "items": items
+    })
 
 
 # -----------------------------
-# CHAT WITH GEMINI
+# CHAT
 # -----------------------------
+
 @app.route("/chat", methods=["POST"])
 def chat():
-    global current_source_id, sources
 
-    data = request.get_json(silent=True) or {}
+    global current_source_id
 
-    question = (data.get("question") or "").strip()
-    requested_model = (data.get("model") or "").strip() or DEFAULT_MODEL_NAME
-    source_id = (data.get("sourceId") or "").strip() or current_source_id
+    data = request.get_json()
+
+    question = data.get("question")
+    source_id = data.get("sourceId", current_source_id)
 
     if not question:
         return jsonify({"success": False, "error": "Question required"}), 400
 
     if not source_id or source_id not in sources:
-        return jsonify(
-            {
-                "success": False,
-                "error": "Upload a document or add a URL first.",
-            }
-        ), 400
+        return jsonify({
+            "success": False,
+            "error": "Upload a PDF or add URL first"
+        }), 400
 
-    if not GEMINI_API_KEY:
-        return jsonify(
-            {
-                "success": False,
-                "error": "GEMINI_API_KEY not configured.",
-            }
-        ), 500
+    context_text = sources[source_id]["text"]
 
-    source = sources[source_id]
-    context_text = source.get("text", "")
+    model = genai.GenerativeModel(DEFAULT_MODEL_NAME)
 
-    try:
+    prompt = f"""
+You are an AI assistant that answers only using the given context.
 
-        model = genai.GenerativeModel(requested_model)
+Context:
+{context_text}
 
-        prompt = (
-            "You are an AI research assistant that answers only using the given context.\n\n"
-            f"Source name: {source.get('name')}\n\n"
-            f"Context:\n{context_text}\n\n"
-            f"Question: {question}\n\n"
-            "If the answer is not in the context say: "
-            "'I'm not sure based on the provided source.'"
-        )
+Question:
+{question}
 
-        response = model.generate_content(prompt)
+If the answer is not in the context say:
+"I'm not sure based on the provided source."
+"""
 
-        answer = getattr(response, "text", "").strip()
+    response = model.generate_content(prompt)
 
-        if not answer:
-            answer = "No response generated."
+    answer = getattr(response, "text", "")
 
-    except Exception as e:
-        return jsonify({"success": False, "error": f"Model error: {e}"}), 500
-
-    return jsonify({"success": True, "answer": answer})
+    return jsonify({
+        "success": True,
+        "answer": answer
+    })
 
 
 # -----------------------------
-# RUN SERVER
+# VERCEL ENTRY
 # -----------------------------
+
 app = app
