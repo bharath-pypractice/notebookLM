@@ -32,6 +32,7 @@ app = Flask(
     static_folder="static"
 )
 
+# Vercel temp storage
 UPLOAD_FOLDER = "/tmp"
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
@@ -48,12 +49,14 @@ current_source_id = None
 # PDF TEXT EXTRACTION
 # -----------------------------
 
-def extract_text_from_pdf(path: str):
+def extract_text_from_pdf(path):
 
     reader = PdfReader(path)
+
     texts = []
 
     for page in reader.pages:
+
         try:
             text = page.extract_text() or ""
         except:
@@ -71,6 +74,7 @@ def extract_text_from_pdf(path: str):
 def extract_text_from_url(url):
 
     response = requests.get(url, timeout=15)
+
     soup = BeautifulSoup(response.text, "html.parser")
 
     for tag in soup(["script", "style", "noscript"]):
@@ -87,6 +91,7 @@ def extract_text_from_url(url):
 
 @app.route("/")
 def index():
+
     return render_template("index.html")
 
 
@@ -198,6 +203,7 @@ def chat():
     source_id = data.get("sourceId", current_source_id)
 
     if not source_id or source_id not in sources:
+
         return jsonify({
             "success": False,
             "error": "Upload document first"
@@ -221,6 +227,7 @@ If not found say:
 """
 
     try:
+
         response = model.generate_content(prompt)
 
         answer = getattr(response, "text", None)

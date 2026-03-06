@@ -9,18 +9,31 @@
 </head>
 
 <body>
+  <div id="sidebar-overlay" class="sidebar-overlay" aria-hidden="true"></div>
   <div class="shell">
-    <aside class="sidebar">
+    <aside id="sidebar" class="sidebar" aria-label="Primary navigation">
       <div class="logo-block">
         <div class="logo-dot"></div>
         <span class="logo-text">Research AI</span>
       </div>
 
       <nav class="nav">
-        <button class="nav-item active">Source Manager</button>
-        <button class="nav-item">Research Lab</button>
-        <button class="nav-item">Library</button>
-        <button class="nav-item">Settings</button>
+        <button class="nav-item active">
+          <span class="nav-icon nav-icon--sources" aria-hidden="true"></span>
+          <span>Source Manager</span>
+        </button>
+        <button class="nav-item">
+          <span class="nav-icon nav-icon--lab" aria-hidden="true"></span>
+          <span>Research Lab</span>
+        </button>
+        <button class="nav-item">
+          <span class="nav-icon nav-icon--library" aria-hidden="true"></span>
+          <span>Library</span>
+        </button>
+        <button class="nav-item">
+          <span class="nav-icon nav-icon--settings" aria-hidden="true"></span>
+          <span>Settings</span>
+        </button>
       </nav>
 
       <div class="profile-card">
@@ -34,9 +47,14 @@
 
     <div class="app-container">
       <header class="app-header">
-        <div>
+        <div class="header-left">
+          <button id="menu-button" class="icon-button header-menu-btn" type="button" aria-label="Open menu">
+            <span class="hamburger" aria-hidden="true"></span>
+          </button>
+          <div>
           <h1>Source Manager</h1>
           <p class="subtitle">Upload research sources and chat with an AI assistant.</p>
+          </div>
         </div>
         <button class="btn primary-btn new-project-btn">+ New Project</button>
       </header>

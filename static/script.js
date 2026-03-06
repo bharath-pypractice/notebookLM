@@ -12,6 +12,9 @@ const importUrlBtn = document.getElementById("import-url-btn");
 const chatForm = document.getElementById("chat-form");
 const chatInput = document.getElementById("chat-input");
 const chatWindow = document.getElementById("chat-window");
+const sidebar = document.getElementById("sidebar");
+const sidebarOverlay = document.getElementById("sidebar-overlay");
+const menuButton = document.getElementById("menu-button");
 
 let activeSource = null;
 let librarySources = [];
@@ -35,6 +38,48 @@ function appendMessage(sender, text) {
 
   chatWindow.scrollTop = chatWindow.scrollHeight;
 }
+
+function appendTyping() {
+  const row = document.createElement("div");
+  row.className = "message-row ai";
+  const bubble = document.createElement("div");
+  bubble.className = "message-bubble message-bubble--typing";
+  bubble.innerHTML = `<span class="typing-dots" aria-label="AI is typing"><i></i><i></i><i></i></span>`;
+  row.appendChild(bubble);
+  chatWindow.appendChild(row);
+  chatWindow.scrollTop = chatWindow.scrollHeight;
+  return row;
+}
+
+function openSidebar() {
+  if (!sidebar || !sidebarOverlay) return;
+  sidebar.classList.add("sidebar--open");
+  sidebarOverlay.classList.add("sidebar-overlay--open");
+  sidebarOverlay.setAttribute("aria-hidden", "false");
+}
+
+function closeSidebar() {
+  if (!sidebar || !sidebarOverlay) return;
+  sidebar.classList.remove("sidebar--open");
+  sidebarOverlay.classList.remove("sidebar-overlay--open");
+  sidebarOverlay.setAttribute("aria-hidden", "true");
+}
+
+if (menuButton) {
+  menuButton.addEventListener("click", () => {
+    if (!sidebar) return;
+    if (sidebar.classList.contains("sidebar--open")) closeSidebar();
+    else openSidebar();
+  });
+}
+
+if (sidebarOverlay) {
+  sidebarOverlay.addEventListener("click", closeSidebar);
+}
+
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeSidebar();
+});
 
 
 function renderSources() {
@@ -206,7 +251,7 @@ chatForm.addEventListener("submit", async (event) => {
 
   appendMessage("user", question);
 
-  appendMessage("ai", "Thinking...");
+  const typingRow = appendTyping();
 
   try {
 
@@ -230,7 +275,7 @@ chatForm.addEventListener("submit", async (event) => {
 
     const data = await response.json();
 
-    chatWindow.lastChild.remove();
+    typingRow.remove();
 
     if (!data.success) {
 
@@ -245,6 +290,7 @@ chatForm.addEventListener("submit", async (event) => {
 
     console.error(error);
 
+    typingRow.remove();
     appendMessage("ai", "Server error.");
 
   }
@@ -252,6 +298,25 @@ chatForm.addEventListener("submit", async (event) => {
   isSending = false;
 
 });
+
+// Upload drag & drop visual feedback
+const fileLabel = document.querySelector(".file-label");
+if (fileLabel) {
+  ["dragenter", "dragover"].forEach((evt) => {
+    fileLabel.addEventListener(evt, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      fileLabel.classList.add("file-label--drag");
+    });
+  });
+  ["dragleave", "drop"].forEach((evt) => {
+    fileLabel.addEventListener(evt, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      fileLabel.classList.remove("file-label--drag");
+    });
+  });
+}
 
 
 if (importUrlBtn) {
