@@ -32,7 +32,6 @@ app = Flask(
     static_folder="static"
 )
 
-# Vercel only allows temp storage
 UPLOAD_FOLDER = "/tmp"
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
@@ -56,30 +55,28 @@ def extract_text_from_pdf(path: str):
 
     for page in reader.pages:
         try:
-            page_text = page.extract_text() or ""
-        except Exception:
-            page_text = ""
+            text = page.extract_text() or ""
+        except:
+            text = ""
 
-        texts.append(page_text)
+        texts.append(text)
 
-    return "\n\n".join(texts)
+    return "\n".join(texts)
 
 
 # -----------------------------
 # URL TEXT EXTRACTION
 # -----------------------------
 
-def extract_text_from_url(url: str):
+def extract_text_from_url(url):
 
     response = requests.get(url, timeout=15)
-    response.raise_for_status()
-
     soup = BeautifulSoup(response.text, "html.parser")
 
     for tag in soup(["script", "style", "noscript"]):
         tag.decompose()
 
-    text = " ".join(soup.get_text(separator=" ").split())
+    text = " ".join(soup.get_text().split())
 
     return text[:15000]
 
@@ -103,38 +100,32 @@ def upload():
     global current_source_id
 
     if "file" not in request.files:
-        return jsonify({"success": False, "error": "No file uploaded"}), 400
+        return jsonify({"success": False}), 400
 
     file = request.files["file"]
 
-    if file.filename == "":
-        return jsonify({"success": False, "error": "No file selected"}), 400
-
     filename = secure_filename(file.filename)
 
-    if not filename.lower().endswith(".pdf"):
-        return jsonify({"success": False, "error": "Only PDF allowed"}), 400
-
     path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+
     file.save(path)
 
-    text_content = extract_text_from_pdf(path)
+    text = extract_text_from_pdf(path)
 
     source_id = str(uuid.uuid4())
 
     sources[source_id] = {
         "id": source_id,
         "name": filename,
-        "type": "pdf",
-        "text": text_content,
+        "text": text
     }
 
     current_source_id = source_id
 
     return jsonify({
         "success": True,
-        "filename": filename,
-        "sourceId": source_id
+        "sourceId": source_id,
+        "filename": filename
     })
 
 
@@ -148,20 +139,17 @@ def add_url():
     global current_source_id
 
     data = request.get_json()
+
     url = data.get("url")
 
-    if not url:
-        return jsonify({"success": False, "error": "URL required"}), 400
-
-    text_content = extract_text_from_url(url)
+    text = extract_text_from_url(url)
 
     source_id = str(uuid.uuid4())
 
     sources[source_id] = {
         "id": source_id,
         "name": url,
-        "type": "url",
-        "text": text_content
+        "text": text
     }
 
     current_source_id = source_id
@@ -181,11 +169,11 @@ def library():
 
     items = []
 
-    for source in sources.values():
+    for s in sources.values():
+
         items.append({
-            "id": source["id"],
-            "name": source["name"],
-            "type": source["type"]
+            "id": s["id"],
+            "name": s["name"]
         })
 
     return jsonify({
@@ -206,38 +194,42 @@ def chat():
     data = request.get_json()
 
     question = data.get("question")
-    source_id = data.get("sourceId", current_source_id)
 
-    if not question:
-        return jsonify({"success": False, "error": "Question required"}), 400
+    source_id = data.get("sourceId", current_source_id)
 
     if not source_id or source_id not in sources:
         return jsonify({
             "success": False,
-            "error": "Upload a document first"
+            "error": "Upload document first"
         }), 400
 
-    context_text = sources[source_id]["text"][:8000]
+    context = sources[source_id]["text"][:8000]
 
     model = genai.GenerativeModel(DEFAULT_MODEL_NAME)
 
     prompt = f"""
-You are an AI assistant that answers only using the given context.
+Answer using only the provided context.
 
 Context:
-{context_text}
+{context}
 
 Question:
 {question}
 
-If the answer is not in the context say:
-"I'm not sure based on the provided source."
+If not found say:
+"I'm not sure based on the provided document."
 """
 
     try:
         response = model.generate_content(prompt)
-        answer = getattr(response, "text", "No response generated")
+
+        answer = getattr(response, "text", None)
+
+        if not answer:
+            answer = "No response generated."
+
     except Exception as e:
+
         return jsonify({
             "success": False,
             "error": str(e)
@@ -247,6 +239,7 @@ If the answer is not in the context say:
         "success": True,
         "answer": answer
     })
+
 
 # -----------------------------
 # VERCEL ENTRY

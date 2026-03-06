@@ -1,6 +1,5 @@
 flask
 google-generativeai
-python-dotenv
 pypdf
 requests
 beautifulsoup4
